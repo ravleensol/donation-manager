@@ -29,6 +29,11 @@ autonomy fetch --local --agent valory/learning_agent
 source .env
 python scripts/aea-config-replace.py
 
+if [[ ! -f ethereum_private_key.txt ]]; then
+    echo "ethereum_private_key.txt not found. Please provide or generate this file."
+    exit 1
+fi
+
 # Copy and add the keys and issue certificates
 cd learning_agent
 cp $PWD/../ethereum_private_key.txt .

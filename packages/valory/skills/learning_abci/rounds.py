@@ -49,6 +49,8 @@ class Event(Enum):
     TRANSACT = "transact"
     NO_MAJORITY = "no_majority"
     ROUND_TIMEOUT = "round_timeout"
+    NONE ="none"
+    
 
 
 class SynchronizedData(BaseSynchronizedData):
@@ -132,11 +134,25 @@ class TxPreparationRound(CollectSameUntilThresholdRound):
     synchronized_data_class = SynchronizedData
     done_event = Event.DONE
     no_majority_event = Event.NO_MAJORITY
+    none_event= Event.NONE
     collection_key = get_name(SynchronizedData.participant_to_tx_round)
     selection_key = (
         get_name(SynchronizedData.tx_submitter),
         get_name(SynchronizedData.most_voted_tx_hash),
     )
+    
+    def end_block(self):
+        if self.threshold_reached:
+            event = Event(self.most_voted_payload)
+            return self.synchronized_data, event
+
+        if not self.is_majority_possible(
+            self.collection, self.synchronized_data.nb_participants
+        ):
+            return self.synchronized_data, Event.NO_MAJORITY
+
+        return None
+        
 
     # Event.ROUND_TIMEOUT  # this needs to be referenced for static checkers
 
@@ -161,18 +177,25 @@ class LearningAbciApp(AbciApp[Event]):
             Event.NO_MAJORITY: APICheckRound,
             Event.ROUND_TIMEOUT: APICheckRound,
             Event.DONE: DecisionMakingRound,
+            
         },
+
         DecisionMakingRound: {
             Event.NO_MAJORITY: DecisionMakingRound,
             Event.ROUND_TIMEOUT: DecisionMakingRound,
             Event.DONE: FinishedDecisionMakingRound,
             Event.ERROR: FinishedDecisionMakingRound,
             Event.TRANSACT: TxPreparationRound,
+            
+
         },
         TxPreparationRound: {
             Event.NO_MAJORITY: TxPreparationRound,
             Event.ROUND_TIMEOUT: TxPreparationRound,
             Event.DONE: FinishedTxPreparationRound,
+            Event.ERROR: FinishedDecisionMakingRound
+            Event.NONE : TxPreparationRound
+            
         },
         FinishedDecisionMakingRound: {},
         FinishedTxPreparationRound: {},
