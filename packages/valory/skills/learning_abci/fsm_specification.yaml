@@ -4,6 +4,7 @@ alphabet_in:
 - NO_MAJORITY
 - ROUND_TIMEOUT
 - TRANSACT
+- NONE
 default_start_state: APICheckRound
 final_states:
 - FinishedDecisionMakingRound

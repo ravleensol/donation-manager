@@ -24,6 +24,11 @@ from typing import Any, Generator, Optional, Set, Type, cast
 
 from colorama import init
 
+from packages.valory.contracts.gnosis_safe.contract import (
+    GnosisSafeContract,
+    SafeOperation
+)
+
 from packages.valory.contracts.gnosis_safe.contract import GnosisSafeContract
 from packages.valory.protocols.contract_api.message import ContractApiMessage
 from packages.valory.protocols.ledger_api.message import LedgerApiMessage
@@ -89,6 +94,7 @@ class APICheckBehaviour(LearningBaseBehaviour):  # pylint: disable=too-many-ance
         with self.context.benchmark_tool.measure(self.behaviour_id).local():
             sender = self.context.agent_address
             price = yield from self.get_price()
+            self.context.logger.info(f"PRICE RETRIEVED FROM COINGECKO API- {price}") 
             payload = APICheckPayload(sender=sender, price=price)
 
         with self.context.benchmark_tool.measure(self.behaviour_id).consensus():
@@ -97,7 +103,7 @@ class APICheckBehaviour(LearningBaseBehaviour):  # pylint: disable=too-many-ance
 
         self.set_done()
 
-    def get_price(self):
+    def get_price(self) -> Generator[None, None, Optional[int]]:
         """Get token price from Coingecko"""
         response = yield from self.get_http_response(
             method="GET",
@@ -112,15 +118,15 @@ class APICheckBehaviour(LearningBaseBehaviour):  # pylint: disable=too-many-ance
             self.context.logger.error(
                 f"Error in fetch the price,Status_code{response.status_code}"
             )
+        decoded_response = response.body    
 
         try:
             response_body = response.body
             response_data = json.loads(response_body)
             price = response_data["autonolas"]["usd"]
-            self.context.logger.info(f"The price is {price}")
             return price
         except json.JSONDecodeError:
-            self.context.logger.error("Could not parse the response body")
+            self.context.logger.error("Could not parse the response body!")
             return None
 
 
@@ -181,7 +187,7 @@ class DecisionMakingBehaviour(
 
         with self.context.benchmark_tool.measure(self.behaviour_id).local():
             sender = self.context.agent_address
-            event = self.get_event()
+            event = self.get_next_event()
             payload = DecisionMakingPayload(sender=sender, event=event)
 
         with self.context.benchmark_tool.measure(self.behaviour_id).consensus():
@@ -190,7 +196,7 @@ class DecisionMakingBehaviour(
 
         self.set_done()
 
-    def get_next_event(self):
+    def get_next_event(self) -> Generator[None, None, Optional[int]]:
         """Get the next event"""
         # Using the token price from the previous round, decide whether we should make a transfer or not
         block_number= yield from self.get_block_number()
@@ -297,17 +303,12 @@ class TxPreparationBehaviour(
             )
             return None
 
-        tx_hash = response.state.body.get("tx_hash", None)
-        if tx_hash is None:
-            self.context.logger.error(
-                "Something went wrong while trying to get the transaction's hash. "
-                f"invalid hash {tx_hash!r} was returned"
-            )
-            return None
+        tx_hash = cast(str, response.state.body["tx_hash"])[2:]
+        return tx_hash
 
-        return tx_hash[2:]  # strip 0x from response hash
+        
 
-    def get_tx_hash(self):
+    def get_tx_hash(self) -> Generator[None, None, Optional[str]]:
         """Get the tx hash"""
         # We need to prepare a 1 wei transfer from the safe to another (configurable) account.
         call_data = {VALUE_KEY: 1, TO_ADDRESS_KEY: self.params.transfer_target_address}

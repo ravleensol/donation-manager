@@ -141,17 +141,33 @@ class TxPreparationRound(CollectSameUntilThresholdRound):
         get_name(SynchronizedData.most_voted_tx_hash),
     )
     
-    def end_block(self):
+    
+    def end_block(self) -> Optional[Tuple[BaseSynchronizedData, Event]]:
+        """Process the end of the block."""
         if self.threshold_reached:
-            event = Event(self.most_voted_payload)
-            return self.synchronized_data, event
+            if self.most_voted_payload == self.ERROR_PAYLOAD:
+                return self.synchronized_data, Event.ERROR
 
+            state = self.synchronized_data.update(
+                synchronized_data_class=self.synchronized_data_class,
+                **{
+                    get_name(
+                        SynchronizedData.participant_to_tx_round
+                    ): self.serialize_collection(self.collection),
+                    get_name(
+                        SynchronizedData.most_voted_tx_hash
+                    ): self.most_voted_payload,
+                    get_name(SynchronizedData.tx_submitter): self.auto_round_id(),
+                },
+            )
+            return state, Event.DONE
+        
         if not self.is_majority_possible(
             self.collection, self.synchronized_data.nb_participants
         ):
             return self.synchronized_data, Event.NO_MAJORITY
 
-        return None
+        return None 
         
 
     # Event.ROUND_TIMEOUT  # this needs to be referenced for static checkers
