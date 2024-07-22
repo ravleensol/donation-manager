@@ -22,13 +22,6 @@
 from abc import ABC
 from typing import Any, Generator, Optional, Set, Type, cast
 
-from colorama import init
-
-from packages.valory.contracts.gnosis_safe.contract import (
-    GnosisSafeContract,
-    SafeOperation
-)
-
 from packages.valory.contracts.gnosis_safe.contract import GnosisSafeContract
 from packages.valory.protocols.contract_api.message import ContractApiMessage
 from packages.valory.protocols.ledger_api.message import LedgerApiMessage
@@ -52,8 +45,12 @@ from packages.valory.skills.learning_abci.rounds import (
     TxPreparationRound,
 )
 import json
+from datetime import datetime
 
-from packages.valory.skills.transaction_settlement_abci.payload_tools import hash_payload_to_hex
+
+from packages.valory.skills.transaction_settlement_abci.payload_tools import (
+    hash_payload_to_hex,
+)
 
 
 HTTP_OK = 200
@@ -94,7 +91,6 @@ class APICheckBehaviour(LearningBaseBehaviour):  # pylint: disable=too-many-ance
         with self.context.benchmark_tool.measure(self.behaviour_id).local():
             sender = self.context.agent_address
             price = yield from self.get_price()
-            self.context.logger.info(f"PRICE RETRIEVED FROM COINGECKO API- {price}") 
             payload = APICheckPayload(sender=sender, price=price)
 
         with self.context.benchmark_tool.measure(self.behaviour_id).consensus():
@@ -103,7 +99,7 @@ class APICheckBehaviour(LearningBaseBehaviour):  # pylint: disable=too-many-ance
 
         self.set_done()
 
-    def get_price(self) -> Generator[None, None, Optional[int]]:
+    def get_price(self):
         """Get token price from Coingecko"""
         response = yield from self.get_http_response(
             method="GET",
@@ -118,61 +114,16 @@ class APICheckBehaviour(LearningBaseBehaviour):  # pylint: disable=too-many-ance
             self.context.logger.error(
                 f"Error in fetch the price,Status_code{response.status_code}"
             )
-        decoded_response = response.body    
 
         try:
             response_body = response.body
             response_data = json.loads(response_body)
             price = response_data["autonolas"]["usd"]
+            self.context.logger.info(f"The price is {price}")
             return price
         except json.JSONDecodeError:
-            self.context.logger.error("Could not parse the response body!")
+            self.context.logger.error("Could not parse the response body")
             return None
-
-
-# class DecisionMakingBehaviour(
-#     LearningBaseBehaviour
-# ):  # pylint: disable=too-many-ancestors
-#     """DecisionMakingBehaviour"""
-
-#     matching_round: Type[AbstractRound] = DecisionMakingRound
-
-#     def async_act(self) -> Generator:
-#         """Do the act, supporting asynchronous execution."""
-
-#         with self.context.benchmark_tool.measure(self.behaviour_id).local():
-#             sender = self.context.agent_address
-#             event = self.get_event()
-#             payload = DecisionMakingPayload(sender=sender, event=event)
-
-#         with self.context.benchmark_tool.measure(self.behaviour_id).consensus():
-#             yield from self.send_a2a_transaction(payload)
-#             yield from self.wait_until_round_end()
-
-#         self.set_done()
-
-#     # def get_event(self):
-#     #     """Get the next event"""
-#     #     # Using the token price from the previous round, decide whether we should make a transfer or not
-#     #     event = Event.DONE.value
-#     #     self.context.logger.info(f"Event is {event}")
-#     #     return event
-
-#     def get_event(self):
-#         """Get the next event"""
-#         # Using the token price from the previous round, decide whether we should make a transfer or not
-#         price = self.synchronized_data.price
-#         self.context.logger.info('Checking if price is within threshold...')
-#         if price > 2 or price < 1:
-#             self.context.logger.info(
-#                 f"Price is outside the threshold. Price: {price} WEI."
-#             )
-#             return Event.TRANSACT.value
-#         self.context.logger.info(
-#             f"Price is within the threshold. Price: {price} WEI."
-#         )
-#         return Event.TRANSACT.value
-
 
 
 class DecisionMakingBehaviour(
@@ -187,7 +138,8 @@ class DecisionMakingBehaviour(
 
         with self.context.benchmark_tool.measure(self.behaviour_id).local():
             sender = self.context.agent_address
-            event = self.get_next_event()
+            event = yield from self.get_next_event()
+            self.context.logger.info(f"evnt behaviour:{event}")
             payload = DecisionMakingPayload(sender=sender, event=event)
 
         with self.context.benchmark_tool.measure(self.behaviour_id).consensus():
@@ -196,59 +148,68 @@ class DecisionMakingBehaviour(
 
         self.set_done()
 
-    def get_next_event(self) -> Generator[None, None, Optional[int]]:
+    @staticmethod
+    def init(now: datetime) -> float:
+        return now.timestamp()
+
+    def get_next_event(self) -> Generator[None, None, Optional[str]]:
         """Get the next event"""
         # Using the token price from the previous round, decide whether we should make a transfer or not
-        block_number= yield from self.get_block_number()
+        block_number = yield from self.get_block_number()
 
-        #if fail to get block number, we send the ERROR event
+        # if fail to get block number, we send the ERROR event
         if not block_number:
             self.context.logger.info("Block number is None.Sending the ERROR event...")
             return Event.ERROR.value
 
-        #if we fail to get the token price , we send ERROR event
-        token_price= self.synchronized_data.price
+        # if we fail to get the token price , we send ERROR event
+        token_price = self.synchronized_data.price
         if not token_price:
             self.context.logger.info("Token price is None. Sending the ERROR event...")
             return Event.ERROR.value
-        # if the timestamp does not end in 0, we send the DONE event
-        now= self.get_sync_timestamp()
-        self.context.logger.info("Timestamp is {now}")
+        # # if the timestamp does not end in 0, we send the DONE event
+        # now = self.get_sync_timestamp()
+        # self.context.logger.info("Timestamp is {now}")
 
-        if init(now) % 5 != 0:
-            self.context.logger.info(
-                f"Timestamp []{init(now)}] is not divisible by 5, Sending DONE event.."
-            ) 
-            return Event.DONE.value
+        # if self.init(now) % 5 != 0:
+        #     self.context.logger.info(
+        #          f"Timestamp [{self.init(now)}] is not divisible by 5, Sending DONE event..."
+        #     )
+        #     return Event.TRANSACT.value
+        # return Event.DONE.value
+        # Directly passing Event.TRANSACT.value
+        self.context.logger.info("Passing the TRANSACT event...")
+        return Event.TRANSACT.value
 
-    #ledger Interaction
+
+    # ledger Interaction
     def get_block_number(self) -> Generator[None, None, Optional[int]]:
-        ledger_api_response= yield from self.get_ledger_api_response(
-            performative= LedgerApiMessage.Performative.GET_STATE,
-            ledger_callable= "get_block_number",
-            chain_id= GNOSIS_CHAIN_ID,
+        ledger_api_response = yield from self.get_ledger_api_response(
+            performative=LedgerApiMessage.Performative.GET_STATE,
+            ledger_callable="get_block_number",
+            chain_id=GNOSIS_CHAIN_ID,
         )
 
         if ledger_api_response.performative != LedgerApiMessage.Performative.STATE:
             self.context.logger.error(
                 f"Error while retieving block number: {ledger_api_response}"
-            )     
+            )
             return None
-        
-        block_number= cast(
-            int,ledger_api_response.state.body["get_block_number_result"]
+
+        block_number = cast(
+            int, ledger_api_response.state.body["get_block_number_result"]
         )
 
-        self.context.logger.error(f"Got block number: {block_number}")  
+        self.context.logger.error(f"Got block number: {block_number}")
 
         return block_number
 
     def get_sync_timestamp(self) -> float:
-        now= cast(
-            SharedState (self.context.state)
-        ).round_sequence.last_round_transition_timestamp.timestamp()
+        now = cast(
+            SharedState(skill_context=self.context)
+        )._round_sequence.last_round_transition_timestamp.timestamp()
 
-        return now  
+        return now
 
 
 class TxPreparationBehaviour(
@@ -303,12 +264,17 @@ class TxPreparationBehaviour(
             )
             return None
 
-        tx_hash = cast(str, response.state.body["tx_hash"])[2:]
-        return tx_hash
+        tx_hash = response.state.body.get("tx_hash", None)
+        if tx_hash is None:
+            self.context.logger.error(
+                "Something went wrong while trying to get the transaction's hash. "
+                f"invalid hash {tx_hash!r} was returned"
+            )
+            return None
 
-        
+        return tx_hash[2:]  # strip 0x from response hash
 
-    def get_tx_hash(self) -> Generator[None, None, Optional[str]]:
+    def get_tx_hash(self) :
         """Get the tx hash"""
         # We need to prepare a 1 wei transfer from the safe to another (configurable) account.
         call_data = {VALUE_KEY: 1, TO_ADDRESS_KEY: self.params.transfer_target_address}
@@ -336,4 +302,5 @@ class LearningRoundBehaviour(AbstractRoundBehaviour):
     behaviours: Set[Type[BaseBehaviour]] = [  # type: ignore
         APICheckBehaviour,
         DecisionMakingBehaviour,
-        TxPreparationBehaviour,]
+        TxPreparationBehaviour,
+    ]
