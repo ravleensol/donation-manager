@@ -22,7 +22,7 @@ skills:
 - valory/registration_abci:0.1.0:bafybeiek7zcsxbucjwzgqfftafhfrocvc7q4yxllh2q44jeemsjxg3rcfm
 - valory/reset_pause_abci:0.1.0:bafybeidw4mbx3os3hmv7ley7b3g3gja7ydpitr7mxbjpwzxin2mzyt5yam
 - valory/termination_abci:0.1.0:bafybeihq6qtbwt6i53ayqym63vhjexkcppy26gguzhhjqywfmiuqghvv44
-- valory/learning_abci:0.1.0:bafybeidldyrmuftp6yvncr57wyjfzop5gencf3brdpdbj3ii2lozzobfgy
+- valory/learning_abci:0.1.0:bafybeigyp5mqclnfr4fpf7krzoc4bxaoluelne4vg33jxpnuncfh2zb6ui
 - valory/transaction_settlement_abci:0.1.0:bafybeigtzlk4uakmd54rxnznorcrstsr52kta474lgrnvx5ovr546vj7sq
 behaviours:
   main:
@@ -112,7 +112,7 @@ models:
       service_registry_address: null
       setup:
         all_participants: []
-        safe_contract_address: '0x0000000000000000000000000000000000000000'
+        safe_contract_address: '0x80f29f3f7e10C80CBcF11A74B1AC631397C5a385'
         consensus_threshold: null
       share_tm_config_on_startup: false
       sleep_time: 1
@@ -135,9 +135,12 @@ models:
       ipfs_address: https://gateway.autonolas.tech/ipfs/
       service_endpoint_base: https://learning.staging.autonolas.tech/
       coingecko_price_template: https://api.coingecko.com/api/v3/simple/price?ids=autonolas&vs_currencies=usd&x_cg_demo_api_key={api_key}
-      coingecko_api_key: null
-      default_chain_id: gnosis
-      transfer_target_address: '0x0000000000000000000000000000000000000000'
+      coingecko_api_key: CG-EXLYYH79KBhcWr1h6zoCWDPw
+      donation_manager_contract_address: '' #address
+      multisend_address: '0xA238CBeb142c10Ef7Ad8442C6D1f9E89e07e7761'
+      transfer_target_address: '' # what should i put here?
+      minimum_donation: 10
+      maximum_donation: 1000
     class_name: Params
   randomness_api:
     args:

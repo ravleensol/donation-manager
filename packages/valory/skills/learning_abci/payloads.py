@@ -29,19 +29,20 @@ from packages.valory.skills.abstract_round_abci.base import BaseTxPayload
 class APICheckPayload(BaseTxPayload):
     """Represent a transaction payload for the APICheckRound."""
 
-    price: Optional[float]
+    donation_amount: Optional[int]
+    ipfs_hash: str
 
 
 @dataclass(frozen=True)
 class DecisionMakingPayload(BaseTxPayload):
     """Represent a transaction payload for the DecisionMakingRound."""
-
-    event: str
+    decision: str
+    donation_amount: int
 
 
 @dataclass(frozen=True)
 class TxPreparationPayload(BaseTxPayload):
     """Represent a transaction payload for the TxPreparationRound."""
-
-    tx_submitter: Optional[str] = None
-    tx_hash: Optional[str] = None
+    update_count_txn: str
+    #tx_submitter: Optional[str] = None
+    #tx_hash: Optional[str] = None  #output str acc to logic

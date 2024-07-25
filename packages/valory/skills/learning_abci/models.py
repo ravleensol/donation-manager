@@ -47,11 +47,20 @@ class Params(BaseParams):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         """Initialize the parameters object."""
-        self.coingecko_price_template = self._ensure(
-            "coingecko_price_template", kwargs, str
+        self.donation_manager_contract_address = self._ensure(
+            "donation_manager_contract_address", kwargs, str
         )
-        self.coingecko_api_key = kwargs.get("coingecko_api_key", None)
-        self.transfer_target_address = self._ensure(
-            "transfer_target_address", kwargs, str
+        self.donation_amount_api_url = self._ensure(
+            "donation_amount_api_url", kwargs, str
         )
+        self.api_key = kwargs.get("api_key", None)
+        self.min_donation = self._ensure(
+            "min_donation", kwargs, int
+        )
+        self.max_donation = self._ensure(
+            "max_donation", kwargs, int
+        )
+
         super().__init__(*args, **kwargs)
+        
+        

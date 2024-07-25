@@ -20,7 +20,7 @@
 """This package contains the rounds of LearningAbciApp."""
 
 from enum import Enum
-from typing import Dict, FrozenSet, Optional, Set, Tuple
+from typing import Dict, FrozenSet, Optional, Set, Tuple, cast
 
 from packages.valory.skills.abstract_round_abci.base import (
     AbciApp,
@@ -49,6 +49,16 @@ class Event(Enum):
     TRANSACT = "transact"
     NO_MAJORITY = "no_majority"
     ROUND_TIMEOUT = "round_timeout"
+    APPROVE_DONATION: "approve_donation"
+    REJECT_DONATION: "reject_donation"
+    DONATION_RECIEVED: "donation_recieved"
+
+class DonationAction(Enum):
+    HOLD="hold"
+    APPROVE="approve"
+    REJECT="reject"
+    PROCESS="process"
+    FINALIZE="finalize"    
 
 
 class SynchronizedData(BaseSynchronizedData):
@@ -63,20 +73,24 @@ class SynchronizedData(BaseSynchronizedData):
         serialized = self.db.get_strict(key)
         return CollectionRound.deserialize_collection(serialized)
 
-    @property
-    def price(self) -> Optional[float]:
-        """Get the token price."""
-        return self.db.get("price", None)
+    def donation_status(self) -> Optional[str]:
+        """getdonation status"""
+        return self.db.get("donation_status", None)    
 
     @property
-    def participant_to_price_round(self) -> DeserializedCollection:
-        """Get the participants to the price round."""
-        return self._get_deserialized("participant_to_price_round")
+    def donation_amount(self) -> Optional[int]:
+        """Get the donation_amount"""
+        return self.db.get("donation_amount", None)
 
     @property
-    def most_voted_tx_hash(self) -> Optional[float]:
-        """Get the token most_voted_tx_hash."""
-        return self.db.get("most_voted_tx_hash", None)
+    def participant_to_donation_round(self) -> DeserializedCollection:
+        """Get the participants to the donation round."""
+        return self._get_deserialized("participant_to_donation_round")
+
+    @property
+    def most_voted_donation(self) -> Optional[int]:
+        """Get the token most_voted_donation."""
+        return self.db.get("most_voted_donation", None)
 
     @property
     def participant_to_tx_round(self) -> DeserializedCollection:
@@ -88,7 +102,24 @@ class SynchronizedData(BaseSynchronizedData):
         """Get the round that submitted a tx to transaction_settlement_abci."""
         return str(self.db.get_strict("tx_submitter"))
 
+    @property
+    def ipfs_hash(self) -> Optional[str]:
+        """Get IPFS hash value"""    
+        return self.db.get("ipfs_hash", None)
 
+    @property
+    def decision(self) -> Optional[str]:
+        """Get decision value"""
+        return self.db.get("decision", None)
+
+    @property
+    def participant_to_decision_round(self) -> Optional[str]:
+        """Get participant_to_decision_round value"""
+        return self._get_deserialized("participant_to_decision_round")
+
+
+
+#fetch
 class APICheckRound(CollectSameUntilThresholdRound):
     """APICheckRound"""
 
@@ -96,8 +127,8 @@ class APICheckRound(CollectSameUntilThresholdRound):
     synchronized_data_class = SynchronizedData
     done_event = Event.DONE
     no_majority_event = Event.NO_MAJORITY
-    collection_key = get_name(SynchronizedData.participant_to_price_round)
-    selection_key = get_name(SynchronizedData.price)
+    collection_key = get_name(SynchronizedData.participant_to_donation_round)
+    selection_key = (get_name(SynchronizedData.donation_amount), get_name(SynchronizedData.ipfs_hash))
 
     # Event.ROUND_TIMEOUT  # this needs to be referenced for static checkers
 
@@ -110,17 +141,30 @@ class DecisionMakingRound(CollectSameUntilThresholdRound):
 
     def end_block(self) -> Optional[Tuple[BaseSynchronizedData, Event]]:
         """Process the end of the block."""
-
         if self.threshold_reached:
-            event = Event(self.most_voted_payload)
-            return self.synchronized_data, event
+            event = Event.ERROR
+            if self.most_voted_payload == "APPROVE":
+                event = Event.TRANSACT
+            elif self.most_voted_payload == "REJECT":
+                event = Event.DONE
+
+            synchronized_data = cast(
+                SynchronizedData,
+                self.synchronized_data.update(
+                    synchronized_data_class=self.synchronized_data_class,
+                    **{get_name(SynchronizedData.decision): self.most_voted_payload},
+                ),
+            )
+            return synchronized_data, event
 
         if not self.is_majority_possible(
             self.collection, self.synchronized_data.nb_participants
         ):
             return self.synchronized_data, Event.NO_MAJORITY
 
-        return None
+        return None    
+
+        
 
     # Event.DONE, Event.ERROR, Event.TRANSACT, Event.ROUND_TIMEOUT  # this needs to be referenced for static checkers
 
@@ -142,10 +186,10 @@ class TxPreparationRound(CollectSameUntilThresholdRound):
                 synchronized_data_class=self.synchronized_data_class,
                 **{
                     get_name(
-                        SynchronizedData.participant_to_tx_round
+                        SynchronizedData.participant_to_donation_round
                     ): self.serialize_collection(self.collection),
                     get_name(
-                        SynchronizedData.most_voted_tx_hash
+                        SynchronizedData.decision
                     ): self.most_voted_payload,
                     get_name(SynchronizedData.tx_submitter): self.auto_round_id(),
                 },
@@ -188,11 +232,14 @@ class LearningAbciApp(AbciApp[Event]):
             Event.DONE: FinishedDecisionMakingRound,
             Event.ERROR: FinishedDecisionMakingRound,
             Event.TRANSACT: TxPreparationRound,
+            Event.APPROVE_DONATION: TxPreparationRound,
+            Event.REJECT_DONATION: FinishedDecisionMakingRound,
         },
         TxPreparationRound: {
             Event.NO_MAJORITY: TxPreparationRound,
             Event.ROUND_TIMEOUT: TxPreparationRound,
             Event.DONE: FinishedTxPreparationRound,
+            Event.ERROR: FinishedDecisionMakingRound
         },
         FinishedDecisionMakingRound: {},
         FinishedTxPreparationRound: {},
@@ -208,5 +255,5 @@ class LearningAbciApp(AbciApp[Event]):
     }
     db_post_conditions: Dict[AppState, Set[str]] = {
         FinishedDecisionMakingRound: set(),
-        FinishedTxPreparationRound: {get_name(SynchronizedData.most_voted_tx_hash)},
+        FinishedTxPreparationRound: {get_name(SynchronizedData.most_voted_donation)},
     }
